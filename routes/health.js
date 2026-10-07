@@ -1,15 +1,21 @@
-// Health route
 const express = require('express');
+const config = require('../services/config');
+
 const router = express.Router();
 
 router.get('/', (req, res) => {
   res.json({
-    status: 'healthy',
-    service: 'TranslateMeta Backend',
+    status: 'ok',
+    service: 'TranslateMeta API',
     version: '1.0.0',
-    developer: '@aykutsen1987',
+    uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    uptime: process.uptime()
+    providers: {
+      gemini: Boolean(config.geminiKey()),
+      deepseek: Boolean(config.deepseekKey()),
+      whisper: Boolean(config.openaiKey()),
+      nllb: Boolean(config.nllbUrl()),
+    },
   });
 });
 

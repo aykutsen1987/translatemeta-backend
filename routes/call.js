@@ -1,28 +1,27 @@
 const express = require('express');
-const axios = require('axios');
+const { translate } = require('../services/aiRouter');
+const { transcribe } = require('../services/speechService');
+const { handle } = require('./handle');
+
 const router = express.Router();
 
-router.post('/translate', async (req, res) => {
-  const { audio_base64, source_language, target_language, session_id } = req.body;
-  if (!audio_base64 || !source_language || !target_language) return res.status(400).json({ error: 'Missing required fields' });
-  const startTime = Date.now();
-  try {
-    const audioBuffer = Buffer.from(audio_base64, 'base64');
-    const FormData = require('form-data');
-    const form = new FormData();
-    form.append('file', audioBuffer, { filename: 'call.wav', contentType: 'audio/wav' });
-    form.append('model', 'whisper-1');
-    form.append('language', source_language);
-    const sttResponse = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
-      headers: { ...form.getHeaders(), Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }
-    });
-    const transcript = sttResponse.data.text;
-    const { translateWithGemini } = require('../services/translationService');
-    const { translatedText } = await translateWithGemini(transcript, source_language, target_language);
-    res.json({ transcript, translated_text: translatedText, session_id, latency_ms: Date.now() - startTime, model_used: 'whisper+gemini_flash' });
-  } catch (e) {
-    res.status(500).json({ error: 'Live call translation failed', details: e.message });
+router.post('/translate', handle(async (req, res) => {
+  const { audio_base64, source_language, target_language, session_id = '' } = req.body;
+  if (!audio_base64 || !source_language || !target_language) {
+    return res.status(400).json({ error: 'audio_base64, source_language and target_language are required' });
   }
-});
+  const started = Date.now();
+  const transcript = await transcribe(audio_base64, source_language);
+  if (!transcript) return res.status(422).json({ error: 'No speech detected' });
+  const result = await translate({ text: transcript, sourceLanguage: source_language, targetLanguage: target_language });
+  res.json({
+    transcript,
+    translated_text: result.translatedText,
+    detected_language: source_language === 'auto' ? null : source_language,
+    model_used: `whisper+${result.modelUsed}`,
+    latency_ms: Date.now() - started,
+    session_id,
+  });
+}));
 
 module.exports = router;

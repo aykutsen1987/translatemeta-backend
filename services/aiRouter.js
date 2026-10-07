@@ -1,13 +1,35 @@
-const RARE_LANGUAGES = new Set(['sw','yo','ig','ha','am','so','ti','km','lo','my','si','ne','ky','tg','uz','tk','mn','ka','hy','az']);
-const COMMON_LANGUAGES = new Set(['en','es','fr','de','it','pt','ru','ja','ko','zh','ar','hi','tr','nl','pl','sv','da','no','fi']);
+const { isRare } = require('./languages');
+const { providers } = require('./providers');
 
-function routeModel({ inputType, text, sourceLanguage }) {
-  if (inputType === 'speech') return 'whisper';
-  if (inputType === 'image')  return 'mlkit';
-  const isRare = sourceLanguage !== 'auto' && (RARE_LANGUAGES.has(sourceLanguage) || !COMMON_LANGUAGES.has(sourceLanguage));
-  if (isRare) return 'nllb';
-  if ((text || '').length > 500) return 'deepseek';
+const LONG_TEXT = 500;
+const ORDER = ['gemini_flash', 'deepseek', 'meta_nllb'];
+const ALIASES = { gemini: 'gemini_flash', gemini_flash: 'gemini_flash', deepseek: 'deepseek', nllb: 'meta_nllb', meta_nllb: 'meta_nllb' };
+
+function routeModel({ text = '', sourceLanguage = 'auto', targetLanguage }) {
+  if ((isRare(sourceLanguage) || isRare(targetLanguage)) && providers.meta_nllb.configured()) return 'meta_nllb';
+  if (text.length > LONG_TEXT && providers.deepseek.configured()) return 'deepseek';
   return 'gemini_flash';
 }
 
-module.exports = { routeModel };
+function candidates(preferred) {
+  const first = ALIASES[preferred];
+  const rest = ORDER.filter((id) => id !== first && providers[id].configured());
+  return first ? [first, ...rest] : rest;
+}
+
+async function translate({ text, sourceLanguage = 'auto', targetLanguage, model }) {
+  const preferred = ALIASES[model] ? model : routeModel({ text, sourceLanguage, targetLanguage });
+  const order = candidates(preferred);
+  let lastError;
+  for (const id of order) {
+    try {
+      const translatedText = await providers[id].translate(text, sourceLanguage, targetLanguage);
+      return { translatedText, modelUsed: id };
+    } catch (e) {
+      lastError = e;
+    }
+  }
+  throw lastError || Object.assign(new Error('No translation provider configured'), { status: 503 });
+}
+
+module.exports = { routeModel, translate };
