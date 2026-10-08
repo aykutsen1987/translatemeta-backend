@@ -25,7 +25,7 @@ async function post(path, body) {
 
 beforeEach(async () => {
   calls = [];
-  for (const k of ['GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'NLLB_API_URL', 'HF_API_KEY']) delete process.env[k];
+  for (const k of ['GEMINI_API_KEY', 'GROQ_API_KEY', 'DEEPSEEK_API_KEY', 'OPENAI_API_KEY', 'NLLB_API_URL', 'HF_API_KEY']) delete process.env[k];
   if (!server) {
     server = app.listen(0);
     base = `http://127.0.0.1:${server.address().port}`;
@@ -138,6 +138,28 @@ test('image translation sends inline image to gemini', async () => {
   const r = await post('/api/v1/translate/image', { image_base64: 'QUJD', target_language: 'tr' });
   assert.equal(r.status, 200);
   assert.equal(JSON.parse(calls[0].init.body).contents[0].parts[0].inlineData.data, 'QUJD');
+});
+
+test('groq works alone for text and speech', async () => {
+  process.env.GROQ_API_KEY = 'g';
+  mockUpstream((url) => (url.includes('audio/transcriptions') ? json({ text: 'selam' }) : json({ choices: [{ message: { content: 'hi' } }] })));
+  const text = await post('/api/v1/translate/text', { text: 'selam', target_language: 'en' });
+  assert.equal(text.status, 200);
+  assert.equal(text.body.model_used, 'groq');
+  assert.match(calls[0].url, /api\.groq\.com\/openai\/v1\/chat\/completions/);
+  const speech = await post('/api/v1/translate/speech', { audio_base64: Buffer.alloc(100).toString('base64'), source_language: 'tr', target_language: 'en' });
+  assert.equal(speech.status, 200);
+  assert.equal(speech.body.model_used, 'whisper+groq');
+  assert.match(calls[1].url, /api\.groq\.com\/openai\/v1\/audio\/transcriptions/);
+  assert.equal(calls[1].init.body.get('model'), 'whisper-large-v3-turbo');
+});
+
+test('groq is used as fallback when gemini fails', async () => {
+  process.env.GEMINI_API_KEY = 'k';
+  process.env.GROQ_API_KEY = 'g';
+  mockUpstream((url) => (url.includes('googleapis') ? json({ error: 'x' }, 500) : json({ choices: [{ message: { content: 'yedek' } }] })));
+  const r = await post('/api/v1/translate/text', { text: 'hello', target_language: 'tr' });
+  assert.equal(r.body.model_used, 'groq');
 });
 
 test('unknown route is 404 and bad json is 400', async () => {

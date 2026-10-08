@@ -2,8 +2,8 @@ const { isRare } = require('./languages');
 const { providers } = require('./providers');
 
 const LONG_TEXT = 500;
-const ORDER = ['gemini_flash', 'deepseek', 'meta_nllb'];
-const ALIASES = { gemini: 'gemini_flash', gemini_flash: 'gemini_flash', deepseek: 'deepseek', nllb: 'meta_nllb', meta_nllb: 'meta_nllb' };
+const ORDER = ['gemini_flash', 'groq', 'deepseek', 'meta_nllb'];
+const ALIASES = { gemini: 'gemini_flash', gemini_flash: 'gemini_flash', groq: 'groq', deepseek: 'deepseek', nllb: 'meta_nllb', meta_nllb: 'meta_nllb' };
 
 function routeModel({ text = '', sourceLanguage = 'auto', targetLanguage }) {
   if ((isRare(sourceLanguage) || isRare(targetLanguage)) && providers.meta_nllb.configured()) return 'meta_nllb';

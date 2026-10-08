@@ -12,8 +12,9 @@ router.get('/', (req, res) => {
     timestamp: new Date().toISOString(),
     providers: {
       gemini: Boolean(config.geminiKey()),
+      groq: Boolean(config.groqKey()),
       deepseek: Boolean(config.deepseekKey()),
-      whisper: Boolean(config.openaiKey()),
+      whisper: Boolean(config.groqKey() || config.openaiKey()),
       nllb: Boolean(config.nllbUrl()),
     },
   });

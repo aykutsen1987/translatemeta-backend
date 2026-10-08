@@ -24,19 +24,24 @@ function toWav(buffer) {
   return Buffer.concat([wavHeader(buffer.length), buffer]);
 }
 
+function sttTarget() {
+  if (config.groqKey()) {
+    return { url: 'https://api.groq.com/openai/v1/audio/transcriptions', key: config.groqKey(), model: config.groqSttModel() };
+  }
+  if (config.openaiKey()) {
+    return { url: 'https://api.openai.com/v1/audio/transcriptions', key: config.openaiKey(), model: config.sttModel() };
+  }
+  throw new UpstreamError('GROQ_API_KEY or OPENAI_API_KEY is not configured', 503);
+}
+
 async function transcribe(audioBase64, language) {
-  const key = config.openaiKey();
-  if (!key) throw new UpstreamError('OPENAI_API_KEY is not configured', 503);
+  const stt = sttTarget();
   const audio = toWav(Buffer.from(audioBase64, 'base64'));
   const form = new FormData();
   form.append('file', new Blob([audio], { type: 'audio/wav' }), 'audio.wav');
-  form.append('model', config.sttModel());
+  form.append('model', stt.model);
   if (language && language !== 'auto') form.append('language', language);
-  const data = await request(
-    'https://api.openai.com/v1/audio/transcriptions',
-    { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form },
-    45000
-  );
+  const data = await request(stt.url, { method: 'POST', headers: { Authorization: `Bearer ${stt.key}` }, body: form }, 45000);
   return (data.text || '').trim();
 }
 

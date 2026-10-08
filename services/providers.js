@@ -26,6 +26,26 @@ async function gemini(parts) {
   return geminiText(data);
 }
 
+async function chat(url, key, model, text, source, target, label) {
+  const data = await postJson(
+    url,
+    {
+      model,
+      messages: [
+        { role: 'system', content: 'You are a professional translator. Return only the translation.' },
+        { role: 'user', content: prompt(text, source, target) },
+      ],
+      temperature: 0.1,
+      stream: false,
+    },
+    { Authorization: `Bearer ${key}` },
+    60000
+  );
+  const out = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!out || !out.trim()) throw new UpstreamError(`${label} returned an empty response`, 502);
+  return out.trim();
+}
+
 const providers = {
   gemini_flash: {
     configured: () => Boolean(config.geminiKey()),
@@ -33,27 +53,13 @@ const providers = {
   },
   deepseek: {
     configured: () => Boolean(config.deepseekKey()),
-    async translate(text, source, target) {
-      const key = requireKey(config.deepseekKey(), 'DEEPSEEK_API_KEY');
-      const data = await postJson(
-        'https://api.deepseek.com/chat/completions',
-        {
-          model: config.deepseekModel(),
-          messages: [
-            { role: 'system', content: 'You are a professional translator. Return only the translation.' },
-            { role: 'user', content: prompt(text, source, target) },
-          ],
-          temperature: 0.1,
-          max_tokens: 4096,
-          stream: false,
-        },
-        { Authorization: `Bearer ${key}` },
-        60000
-      );
-      const out = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      if (!out || !out.trim()) throw new UpstreamError('DeepSeek returned an empty response', 502);
-      return out.trim();
-    },
+    translate: (text, source, target) =>
+      chat('https://api.deepseek.com/chat/completions', requireKey(config.deepseekKey(), 'DEEPSEEK_API_KEY'), config.deepseekModel(), text, source, target, 'DeepSeek'),
+  },
+  groq: {
+    configured: () => Boolean(config.groqKey()),
+    translate: (text, source, target) =>
+      chat('https://api.groq.com/openai/v1/chat/completions', requireKey(config.groqKey(), 'GROQ_API_KEY'), config.groqModel(), text, source, target, 'Groq'),
   },
   meta_nllb: {
     configured: () => Boolean(config.nllbUrl()),
